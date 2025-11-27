@@ -11,7 +11,8 @@ const App: React.FC = () => {
   const [apiConfig, setApiConfig] = useState<ApiConfig>({
     aiConfig: {
         provider: AIProvider.GEMINI,
-        apiKey: process.env.API_KEY || '', // Fallback for dev environment convenience
+        // FIX: Removed process.env.API_KEY to prevent "process is not defined" error in browser
+        apiKey: '', 
         baseUrl: '',
         modelName: 'gemini-2.5-flash'
     },
@@ -120,7 +121,7 @@ const App: React.FC = () => {
           </div>
           <div className="hidden md:flex items-center gap-2 text-gray-500 text-sm">
              <Terminal size={16} />
-             <span>v1.2.0 (Multi-Model Support)</span>
+             <span>v1.2.1 (Browser Compatible)</span>
           </div>
         </header>
 
