@@ -1,7 +1,7 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { ApiConfig, KeyValuePair, AIProvider } from '../types';
-import { Settings, Play, FileText, Key, Globe, Shield, Upload, Trash2, FileType, Plus, X, ToggleLeft, ToggleRight, List, Sliders, Bot, RefreshCw } from 'lucide-react';
+import { Settings, FileText, Key, Upload, Trash2, FileType, Plus, X, ToggleLeft, ToggleRight, List, Sliders, Bot, RefreshCw, Zap, Download, Monitor, Cloud, Laptop, Globe, ExternalLink, Play } from 'lucide-react';
 
 // Declare mammoth globally as it's loaded via script tag
 declare const mammoth: any;
@@ -13,10 +13,45 @@ interface SetupPanelProps {
   isGenerating: boolean;
 }
 
+type ConnectionMode = 'cloud' | 'local' | 'direct';
+
 const SetupPanel: React.FC<SetupPanelProps> = ({ config, setConfig, onGenerate, isGenerating }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<'ai' | 'basic' | 'advanced' | 'docs'>('ai');
-  
+  const [connectionMode, setConnectionMode] = useState<ConnectionMode>('direct');
+
+  // Initialize connection mode state from config
+  useEffect(() => {
+    if (!config.useServerProxy) {
+        setConnectionMode('direct');
+    } else if (config.proxyUrl && (config.proxyUrl.includes('localhost') || config.proxyUrl.includes('127.0.0.1'))) {
+        setConnectionMode('local');
+    } else {
+        setConnectionMode('cloud');
+    }
+  }, []);
+
+  // Update config when mode changes
+  const handleModeChange = (mode: ConnectionMode) => {
+      setConnectionMode(mode);
+      if (mode === 'direct') {
+          setConfig(prev => ({ ...prev, useServerProxy: false }));
+      } else if (mode === 'local') {
+          setConfig(prev => ({ 
+              ...prev, 
+              useServerProxy: true,
+              proxyUrl: 'http://localhost:3001/proxy'
+          }));
+      } else {
+          // Cloud
+          setConfig(prev => ({ 
+              ...prev, 
+              useServerProxy: true,
+              proxyUrl: '/api/proxy'
+          }));
+      }
+  };
+
   const handleChange = (field: keyof ApiConfig, value: any) => {
     setConfig(prev => ({ ...prev, [field]: value }));
   };
@@ -48,6 +83,10 @@ const SetupPanel: React.FC<SetupPanelProps> = ({ config, setConfig, onGenerate, 
               defaultBaseUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
               defaultModel = 'qwen-plus';
               break;
+          case AIProvider.OPENAI:
+              defaultBaseUrl = 'https://api.openai.com/v1';
+              defaultModel = 'gpt-4o';
+              break;
       }
 
       setConfig(prev => ({
@@ -59,6 +98,63 @@ const SetupPanel: React.FC<SetupPanelProps> = ({ config, setConfig, onGenerate, 
               modelName: defaultModel
           }
       }));
+  };
+
+  // Local Agent Script Content
+  const localAgentScript = `
+const express = require('express');
+const cors = require('cors');
+const axios = require('axios');
+const bodyParser = require('body-parser');
+
+const app = express();
+const PORT = 3001;
+
+// 允许所有跨域请求
+app.use(cors());
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+
+app.post('/proxy', async (req, res) => {
+    const { targetUrl, method, headers, body } = req.body;
+    console.log(\`[Proxy] \${method} -> \${targetUrl}\`);
+
+    try {
+        const response = await axios({
+            url: targetUrl, method, headers, data: body,
+            validateStatus: () => true 
+        });
+        res.json({
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+            data: response.data
+        });
+    } catch (error) {
+        console.error('[Error]', error.message);
+        res.status(502).json({
+            status: 0, error: error.message,
+            data: error.response?.data || null
+        });
+    }
+});
+
+app.listen(PORT, () => {
+    console.log(\`✅ 本地代理已启动: http://localhost:\${PORT}/proxy\`);
+    console.log(\`   请在网页端将代理地址设置为上方 URL\`);
+});
+`.trim();
+
+  const downloadLocalAgent = () => {
+      const blob = new Blob([localAgentScript], { type: 'application/javascript' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'local-agent.js';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -249,11 +345,12 @@ const SetupPanel: React.FC<SetupPanelProps> = ({ config, setConfig, onGenerate, 
 
                 <div>
                     <label className="block text-sm font-medium text-gray-400 mb-2">选择模型提供商</label>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         {[
                             { id: AIProvider.GEMINI, name: 'Gemini' },
                             { id: AIProvider.DEEPSEEK, name: 'DeepSeek' },
-                            { id: AIProvider.TONGYI, name: '通义千问' }
+                            { id: AIProvider.TONGYI, name: '通义千问' },
+                            { id: AIProvider.OPENAI, name: 'OpenAI' }
                         ].map(p => (
                             <button
                                 key={p.id}
@@ -357,12 +454,6 @@ const SetupPanel: React.FC<SetupPanelProps> = ({ config, setConfig, onGenerate, 
                                 <Trash2 size={16} />
                             </button>
                         </div>
-                        {config.aiConfig.provider !== AIProvider.GEMINI && config.importedFile.mimeType === 'application/pdf' && (
-                            <div className="text-xs text-amber-400 bg-amber-900/20 p-2 rounded flex items-start gap-1">
-                                <span className="font-bold">⚠️ 注意:</span> 
-                                <span>您当前选择的 {config.aiConfig.provider} 可能不支持直接解析 PDF。建议将 PDF 内容转换为文本粘贴到下方。</span>
-                            </div>
-                        )}
                     </div>
                 )}
 
@@ -377,25 +468,134 @@ const SetupPanel: React.FC<SetupPanelProps> = ({ config, setConfig, onGenerate, 
 
         {/* TAB 2: BASIC CONFIG */}
         {activeTab === 'basic' && (
-            <div className="space-y-4 animate-fadeIn">
+            <div className="space-y-6 animate-fadeIn">
+                
+                {/* Connection Mode Selection */}
+                <div className="space-y-3">
+                    <label className="text-sm font-medium text-gray-400 block">网络连接模式 (Connection Mode)</label>
+                    <div className="grid grid-cols-1 gap-3">
+                        {/* Mode 1: Cloud Proxy */}
+                        <div 
+                            onClick={() => handleModeChange('cloud')}
+                            className={`cursor-pointer p-3 rounded-lg border flex items-center justify-between transition-all ${connectionMode === 'cloud' ? 'bg-indigo-900/30 border-indigo-500' : 'bg-gray-900 border-gray-700 hover:bg-gray-800'}`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-full ${connectionMode === 'cloud' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400'}`}>
+                                    <Cloud size={18} />
+                                </div>
+                                <div>
+                                    <h4 className={`text-sm font-bold ${connectionMode === 'cloud' ? 'text-indigo-300' : 'text-gray-300'}`}>☁️ 云端代理 (推荐)</h4>
+                                    <p className="text-xs text-gray-500">通过部署的服务器转发请求，解决 CORS 问题。适用于测试公网接口。</p>
+                                </div>
+                            </div>
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${connectionMode === 'cloud' ? 'border-indigo-500 bg-indigo-500' : 'border-gray-600'}`}>
+                                {connectionMode === 'cloud' && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                            </div>
+                        </div>
+
+                        {/* Mode 2: Local Proxy */}
+                        <div 
+                            onClick={() => handleModeChange('local')}
+                            className={`cursor-pointer p-3 rounded-lg border flex flex-col gap-2 transition-all ${connectionMode === 'local' ? 'bg-indigo-900/30 border-indigo-500' : 'bg-gray-900 border-gray-700 hover:bg-gray-800'}`}
+                        >
+                            <div className="flex items-center justify-between w-full">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-full ${connectionMode === 'local' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400'}`}>
+                                        <Laptop size={18} />
+                                    </div>
+                                    <div>
+                                        <h4 className={`text-sm font-bold ${connectionMode === 'local' ? 'text-indigo-300' : 'text-gray-300'}`}>💻 本地代理 (测内网)</h4>
+                                        <p className="text-xs text-gray-500">在本地运行脚本，穿透内网。适用于测试 Localhost 或 局域网 API。</p>
+                                    </div>
+                                </div>
+                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${connectionMode === 'local' ? 'border-indigo-500 bg-indigo-500' : 'border-gray-600'}`}>
+                                    {connectionMode === 'local' && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                                </div>
+                            </div>
+                            
+                            {connectionMode === 'local' && (
+                                <div className="ml-11 mt-1 p-3 bg-gray-950/50 rounded text-xs text-gray-400 border border-gray-800 animate-fadeIn">
+                                    <p className="mb-2">1. 下载代理脚本 <code className="bg-gray-800 px-1 rounded text-gray-300">local-agent.js</code></p>
+                                    <p className="mb-2">2. 确保已安装 Node.js，在终端运行: <br/><code className="text-green-400 block mt-1">node local-agent.js</code></p>
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); downloadLocalAgent(); }}
+                                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded flex items-center gap-1.5 transition-colors"
+                                        >
+                                            <Download size={12} /> 下载脚本
+                                        </button>
+                                        <span className="text-gray-600 text-[10px]">或将其打包为 .exe 免环境运行</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                         {/* Mode 3: Direct */}
+                         <div 
+                            onClick={() => handleModeChange('direct')}
+                            className={`cursor-pointer p-3 rounded-lg border flex flex-col gap-2 transition-all ${connectionMode === 'direct' ? 'bg-indigo-900/30 border-indigo-500' : 'bg-gray-900 border-gray-700 hover:bg-gray-800'}`}
+                        >
+                            <div className="flex items-center justify-between w-full">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-full ${connectionMode === 'direct' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400'}`}>
+                                        <Globe size={18} />
+                                    </div>
+                                    <div>
+                                        <h4 className={`text-sm font-bold ${connectionMode === 'direct' ? 'text-indigo-300' : 'text-gray-300'}`}>🌐 浏览器直连</h4>
+                                        <p className="text-xs text-gray-500">浏览器直接发起请求。需安装插件解决 CORS 问题。</p>
+                                    </div>
+                                </div>
+                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${connectionMode === 'direct' ? 'border-indigo-500 bg-indigo-500' : 'border-gray-600'}`}>
+                                    {connectionMode === 'direct' && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                                </div>
+                            </div>
+                            {connectionMode === 'direct' && (
+                                <div className="ml-11 mt-1 p-2 bg-yellow-900/20 border border-yellow-700/30 rounded text-xs text-yellow-500 animate-fadeIn flex items-start gap-2">
+                                    <ExternalLink size={14} className="mt-0.5 flex-shrink-0" />
+                                    <div>
+                                        推荐安装 "Allow CORS" 浏览器插件，否则大多数接口会因跨域失败。
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Base URL Input */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1 flex items-center gap-1">
-                        <Globe size={14} /> 基础 URL (Base URL)
-                    </label>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">Base URL</label>
                     <input
                         type="text"
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                        placeholder="https://api.example.com/v1"
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none placeholder-gray-600"
+                        placeholder="e.g. https://api.example.com/v1"
                         value={config.baseUrl}
                         onChange={(e) => handleChange('baseUrl', e.target.value)}
                     />
+                    {connectionMode === 'cloud' && (config.baseUrl.includes('localhost') || config.baseUrl.includes('192.168.') || config.baseUrl.includes('127.0.0.1')) && (
+                        <div className="mt-2 text-xs text-amber-500 bg-amber-900/20 border border-amber-900/50 p-2 rounded flex items-center gap-2">
+                            <Zap size={14} />
+                            <span>云端代理无法访问本地地址 ({config.baseUrl})。请切换为 **本地代理** 或 **直连** 模式。</span>
+                        </div>
+                    )}
                 </div>
 
-                <div className="grid grid-cols-1 gap-4">
+                 {/* Custom Proxy URL (Only if using proxy) */}
+                 {config.useServerProxy && (
                     <div>
-                        <label className="block text-sm font-medium text-gray-400 mb-1 flex items-center gap-1">
-                            <Shield size={14} /> 认证 Header 名
-                        </label>
+                         <label className="block text-sm font-medium text-gray-400 mb-1">代理服务地址 (Proxy Server URL)</label>
+                         <input
+                            type="text"
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono text-gray-400"
+                            value={config.proxyUrl}
+                            onChange={(e) => handleChange('proxyUrl', e.target.value)}
+                         />
+                    </div>
+                 )}
+
+                {/* Auth */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-1">Auth Header</label>
                         <input
                             type="text"
                             className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
@@ -405,12 +605,11 @@ const SetupPanel: React.FC<SetupPanelProps> = ({ config, setConfig, onGenerate, 
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-400 mb-1 flex items-center gap-1">
-                            <Key size={14} /> 认证 Token
-                        </label>
-                        <textarea
-                            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-24"
-                            placeholder="eyJhbGciOiJIUz..."
+                        <label className="block text-sm font-medium text-gray-400 mb-1">Auth Token</label>
+                        <input
+                            type="text"
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                            placeholder="Bearer eyJhb..."
                             value={config.authToken}
                             onChange={(e) => handleChange('authToken', e.target.value)}
                         />
@@ -419,52 +618,53 @@ const SetupPanel: React.FC<SetupPanelProps> = ({ config, setConfig, onGenerate, 
             </div>
         )}
 
-        {/* TAB 3: ADVANCED (GLOBAL PARAMS) */}
+        {/* TAB 3: ADVANCED CONFIG */}
         {activeTab === 'advanced' && (
             <div className="space-y-6 animate-fadeIn">
-                <div className="bg-indigo-900/20 border border-indigo-500/20 p-3 rounded text-xs text-gray-300">
-                    <p className="font-semibold mb-1 text-indigo-400">参数覆盖规则：</p>
-                    <p>AI 生成的测试用例可能已包含文档中提及的参数（如 app_key 占位符）。</p>
-                    <p className="mt-1 text-gray-400">在此处填写的参数将拥有<b>最高优先级</b>，可用于：</p>
-                    <ul className="list-disc pl-4 mt-1 space-y-1 text-gray-500">
-                        <li>覆盖 AI 生成的占位符（填入真实值）</li>
-                        <li>为所有请求强制注入 Cookie、TraceId 等</li>
-                    </ul>
+                <div className="bg-indigo-900/20 border border-indigo-500/20 p-3 rounded text-xs text-indigo-200 mb-4">
+                    在此配置的参数将自动合并到所有请求中。用于设置全局的 API Key、签名 (Sign) 或公共 Header。
                 </div>
                 
-                {renderKeyValueEditor("全局 Headers", "globalHeaders", config.globalHeaders, "Header Name (e.g. X-Env)")}
-                <div className="border-t border-gray-700 my-4"></div>
-                {renderKeyValueEditor("全局 Query 参数", "globalQueryParams", config.globalQueryParams, "Query Key (e.g. debug)")}
-                <div className="border-t border-gray-700 my-4"></div>
-                {renderKeyValueEditor("全局 Body 参数", "globalBodyParams", config.globalBodyParams || [], "Key (e.g. app_secret)")}
+                {renderKeyValueEditor("全局 Header (Global Headers)", 'globalHeaders', config.globalHeaders, "Header Name (e.g. X-Channel)")}
+                
+                {renderKeyValueEditor("全局 URL 参数 (Global Query Params)", 'globalQueryParams', config.globalQueryParams, "Param Key (e.g. api_key)")}
+                
+                {renderKeyValueEditor("全局 Body 参数 (Global Body Params)", 'globalBodyParams', config.globalBodyParams, "Body Key (e.g. app_secret)")}
+                
+                <p className="text-xs text-gray-500 mt-2">
+                    * 全局 Body 参数仅对 POST/PUT/PATCH 请求生效。
+                </p>
             </div>
         )}
 
       </div>
-
+      
       {/* Footer Action */}
-      <div className="p-4 border-t border-gray-700 bg-gray-800/50 rounded-b-xl">
+      <div className="p-4 border-t border-gray-700 bg-gray-800/50">
         <button
           onClick={onGenerate}
-          disabled={isGenerating || (!config.documentation && !config.importedFile) || !config.aiConfig.apiKey}
-          className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg font-semibold transition-all ${
-            isGenerating || (!config.documentation && !config.importedFile) || !config.aiConfig.apiKey
-              ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-              : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+          disabled={isGenerating || !config.aiConfig.apiKey}
+          className={`w-full py-3 rounded-lg font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
+            isGenerating || !config.aiConfig.apiKey
+              ? 'bg-gray-600 cursor-not-allowed text-gray-400'
+              : 'bg-indigo-600 hover:bg-indigo-500 hover:shadow-indigo-500/25'
           }`}
-          title={!config.aiConfig.apiKey ? "请先配置 AI API Key" : ""}
         >
           {isGenerating ? (
-            <>
-              <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
-              正在生成...
-            </>
+              <>
+                <RefreshCw className="animate-spin" size={20} />
+                正在解析文档...
+              </>
           ) : (
-            <>
-              <Play size={18} /> 生成测试用例
-            </>
+              <>
+                <Bot size={20} />
+                生成测试用例
+              </>
           )}
         </button>
+        {!config.aiConfig.apiKey && (
+            <p className="text-xs text-red-400 text-center mt-2">请先在 "AI 设置" 中输入 API Key</p>
+        )}
       </div>
     </div>
   );

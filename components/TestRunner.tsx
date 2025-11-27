@@ -79,6 +79,10 @@ const TestRow: React.FC<{ testCase: TestCase; result?: TestResult; config: ApiCo
     const effectiveHeaders = getEffectiveHeaders(testCase, config);
     const effectiveBody = getEffectiveBody(testCase, config);
 
+    // Detect potential CORS error
+    const isCorsError = result?.status === 'ERROR' && 
+        (result.errorMessage?.includes('Failed to fetch') || result.errorMessage?.includes('Network Error'));
+
     return (
         <div className="border border-gray-700 rounded-lg overflow-hidden bg-gray-900/50 hover:bg-gray-900 transition-colors">
             <div 
@@ -159,7 +163,18 @@ const TestRow: React.FC<{ testCase: TestCase; result?: TestResult; config: ApiCo
                                 <div className="space-y-2">
                                     {result.errorMessage ? (
                                         <div className="text-red-400 bg-red-900/20 border border-red-900/50 p-2 rounded">
-                                            {result.errorMessage}
+                                            <div className="font-bold mb-1">Error: {result.errorMessage}</div>
+                                            {isCorsError && (
+                                                <div className="mt-2 text-xs text-amber-300 border-t border-red-900/50 pt-2">
+                                                    <p className="font-bold">💡 可能是跨域 (CORS) 问题</p>
+                                                    <p>浏览器拦截了对第三方 API 的直接请求。</p>
+                                                    <p className="mt-1">解决方案：</p>
+                                                    <ul className="list-disc pl-4">
+                                                        <li>请检查 Nginx 是否配置了 <code>/api/proxy/</code> 转发</li>
+                                                        <li>将 Base URL 设置为 <code>{window.location.origin}/api/proxy</code></li>
+                                                    </ul>
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <pre className="bg-gray-900 p-2 rounded border border-gray-800 text-xs text-green-300 overflow-x-auto max-h-[300px]">
@@ -406,7 +421,7 @@ const TestRunner: React.FC<TestRunnerProps> = ({ testCases, results, runAllTests
       </div>
       
       <div className="p-3 bg-amber-900/20 border-t border-amber-900/30 text-amber-200 text-xs text-center">
-         注意：浏览器端的请求受 CORS 限制。请确保您的 API 允许 CORS，或者使用浏览器插件绕过。
+         注意：浏览器端的请求受 CORS 限制。请确保您的 API 允许 CORS，或者使用配置好的 /api/proxy/ 进行转发。
       </div>
     </div>
   );

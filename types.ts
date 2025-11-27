@@ -21,10 +21,12 @@ export interface AIConfig {
 }
 
 export interface ApiConfig {
-  aiConfig: AIConfig; // Added AI Configuration
+  aiConfig: AIConfig;
   baseUrl: string;
   authToken: string;
-  authHeader: string; // e.g., 'Authorization' or 'x-api-key'
+  authHeader: string;
+  useServerProxy: boolean;
+  proxyUrl?: string; // NEW: Allow custom proxy URL (e.g. http://localhost:3001/proxy)
   globalHeaders: KeyValuePair[];
   globalQueryParams: KeyValuePair[];
   globalBodyParams: KeyValuePair[];

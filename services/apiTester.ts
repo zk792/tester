@@ -1,3 +1,4 @@
+
 import { ApiConfig, TestCase, TestResult } from "../types";
 
 export const executeTestCase = async (
@@ -36,22 +37,20 @@ export const executeTestCase = async (
   }
 
   // 3. Construct Headers
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...testCase.headers,
+    ...(testCase.headers || {}),
   };
 
   // Add Global Headers (Overrides existing)
   config.globalHeaders.forEach(header => {
     if (header.enabled && header.key) {
-      // @ts-ignore
       headers[header.key] = header.value;
     }
   });
 
   // Add Auth Token if configured
   if (config.authToken) {
-    // @ts-ignore
     headers[config.authHeader || 'Authorization'] = config.authToken.startsWith('Bearer ') || config.authHeader !== 'Authorization' 
       ? config.authToken 
       : `Bearer ${config.authToken}`;
@@ -82,36 +81,74 @@ export const executeTestCase = async (
   }
 
   try {
-    const fetchOptions: RequestInit = {
-      method: testCase.method,
-      headers: headers,
-    };
-
-    if (isBodyMethod && requestBody && Object.keys(requestBody).length > 0) {
-      fetchOptions.body = JSON.stringify(requestBody);
-    }
-
-    const response = await fetch(urlStr, fetchOptions);
-    const latency = Math.round(performance.now() - startTime);
-    
     let responseBody = null;
-    const contentType = response.headers.get("content-type");
-    if (contentType && contentType.includes("application/json")) {
-        try {
-            responseBody = await response.json();
-        } catch {
+    let status = 'ERROR';
+    let actualStatus = 0;
+    
+    // === PROXY MODE vs DIRECT MODE ===
+    if (config.useServerProxy) {
+        // Proxy Mode: Send all details to the node middleware (Cloud or Local)
+        // Default to /api/proxy (Cloud) if not set
+        const proxyEndpoint = config.proxyUrl || '/api/proxy';
+        
+        const proxyPayload = {
+            targetUrl: urlStr,
+            method: testCase.method,
+            headers: headers,
+            body: isBodyMethod ? requestBody : undefined
+        };
+
+        const response = await fetch(proxyEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(proxyPayload)
+        });
+        
+        // The middleware returns { status, headers, data } or error structure
+        const proxyResult = await response.json();
+        
+        if (response.status === 502 || response.status === 404) {
+             throw new Error(proxyResult.error || `Proxy Error (Are you running the Local Agent?): ${response.statusText}`);
+        }
+
+        actualStatus = proxyResult.status;
+        responseBody = proxyResult.data;
+        status = actualStatus === testCase.expectedStatus ? 'PASS' : 'FAIL';
+
+    } else {
+        // Direct Mode: Browser fetch
+        const fetchOptions: RequestInit = {
+            method: testCase.method,
+            headers: headers,
+        };
+
+        if (isBodyMethod && requestBody && Object.keys(requestBody).length > 0) {
+            fetchOptions.body = JSON.stringify(requestBody);
+        }
+
+        const response = await fetch(urlStr, fetchOptions);
+        actualStatus = response.status;
+
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+            try {
+                responseBody = await response.json();
+            } catch {
+                responseBody = await response.text();
+            }
+        } else {
             responseBody = await response.text();
         }
-    } else {
-        responseBody = await response.text();
+
+        status = actualStatus === testCase.expectedStatus ? 'PASS' : 'FAIL';
     }
 
-    const status = response.status === testCase.expectedStatus ? 'PASS' : 'FAIL';
+    const latency = Math.round(performance.now() - startTime);
 
     return {
       testCaseId: testCase.id,
-      status,
-      actualStatus: response.status,
+      status: status as 'PASS' | 'FAIL',
+      actualStatus,
       latencyMs: latency,
       responseBody,
       timestamp: new Date().toISOString(),

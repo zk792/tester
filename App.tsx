@@ -11,7 +11,6 @@ const App: React.FC = () => {
   const [apiConfig, setApiConfig] = useState<ApiConfig>({
     aiConfig: {
         provider: AIProvider.GEMINI,
-        // FIX: Removed process.env.API_KEY to prevent "process is not defined" error in browser
         apiKey: '', 
         baseUrl: '',
         modelName: 'gemini-2.5-flash'
@@ -19,6 +18,8 @@ const App: React.FC = () => {
     baseUrl: '',
     authToken: '',
     authHeader: 'Authorization',
+    useServerProxy: false, // Default off
+    proxyUrl: '/api/proxy', // Default to cloud proxy
     globalHeaders: [],
     globalQueryParams: [],
     globalBodyParams: [],
@@ -121,7 +122,7 @@ const App: React.FC = () => {
           </div>
           <div className="hidden md:flex items-center gap-2 text-gray-500 text-sm">
              <Terminal size={16} />
-             <span>v1.2.1 (Browser Compatible)</span>
+             <span>v1.4.0 (Local Agent Support)</span>
           </div>
         </header>
 
