@@ -82,31 +82,31 @@ sudo nginx -t
 sudo systemctl restart nginx
 ```
 
-## 6. 用户内网测试方案 (EXE 打包指南)
+## 6. 用户内网测试方案 (提供 EXE 下载)
 
-为了让不懂技术的用户也能测试内网接口，您可以将 `local-agent.js` 打包成 `.exe` 文件。
+为了让不懂技术的用户也能测试内网接口，您可以将 `local-agent.js` 打包成 `.exe` 文件并托管在您的网站上。
 
-### 打包步骤 (在开发者电脑上执行)
+### 步骤 A: 打包 EXE (在开发者电脑上执行)
 
-1. **安装 pkg 工具**:
+1. **新建文件夹并初始化**:
    ```bash
-   npm install -g pkg
+   mkdir agent-build && cd agent-build
+   npm init -y
+   npm install pkg express cors axios body-parser
    ```
-
-2. **准备 package.json**:
-   创建一个文件夹 `local-agent-build`，放入下载好的 `local-agent.js`。
-   在该文件夹运行 `npm init -y`，并安装依赖：
-   ```bash
-   npm install express cors axios body-parser
-   ```
+2. **复制脚本**: 将项目中的 `local-agent.js` (或 `server.js`) 复制到该目录。
 
 3. **打包**:
    ```bash
-   # 打包为 Windows, macOS, Linux 可执行文件
-   pkg local-agent.js --targets node18-win-x64,node18-macos-x64,node18-linux-x64
+   npx pkg local-agent.js --targets node18-win-x64 --output local-agent
    ```
+   这会生成 `local-agent.exe`。
 
-4. **分发**:
-   将生成的 `local-agent-win.exe` 发给 Windows 用户。
-   用户双击运行该 exe 后，CMD 窗口会显示代理已启动。
-   此时用户在网页版中选择 **"本地代理"** 模式即可直接测试内网接口。
+### 步骤 B: 上传并部署
+
+1. **上传文件**: 将生成的 `local-agent.exe` 复制到您 React 项目的 `public` 文件夹中。
+   * 如果是已经部署的服务器，直接上传到 `/var/www/temeng.chat/` (与 index.html 同级)。
+2. **重新构建/部署**:
+   如果您是放入源码的 `public` 文件夹，请重新运行 `npm run build` 并上传新的 dist。
+
+现在，网页上的 **"下载 Windows 客户端 (.exe)"** 按钮就能正常工作了。

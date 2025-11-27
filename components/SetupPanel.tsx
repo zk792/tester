@@ -1,7 +1,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { ApiConfig, KeyValuePair, AIProvider } from '../types';
-import { Settings, FileText, Key, Upload, Trash2, FileType, Plus, X, ToggleLeft, ToggleRight, List, Sliders, Bot, RefreshCw, Zap, Download, Monitor, Cloud, Laptop, Globe, ExternalLink, Play } from 'lucide-react';
+import { Settings, FileText, Key, Upload, Trash2, FileType, Plus, X, ToggleLeft, ToggleRight, List, Sliders, Bot, RefreshCw, Zap, Download, Monitor, Cloud, Laptop, Globe, ExternalLink, Play, Package } from 'lucide-react';
 
 // Declare mammoth globally as it's loaded via script tag
 declare const mammoth: any;
@@ -505,7 +505,7 @@ app.listen(PORT, () => {
                                     </div>
                                     <div>
                                         <h4 className={`text-sm font-bold ${connectionMode === 'local' ? 'text-indigo-300' : 'text-gray-300'}`}>💻 本地代理 (测内网)</h4>
-                                        <p className="text-xs text-gray-500">在本地运行脚本，穿透内网。适用于测试 Localhost 或 局域网 API。</p>
+                                        <p className="text-xs text-gray-500">在本地运行代理工具，穿透内网。适用于测试 Localhost 或 局域网 API。</p>
                                     </div>
                                 </div>
                                 <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${connectionMode === 'local' ? 'border-indigo-500 bg-indigo-500' : 'border-gray-600'}`}>
@@ -514,17 +514,33 @@ app.listen(PORT, () => {
                             </div>
                             
                             {connectionMode === 'local' && (
-                                <div className="ml-11 mt-1 p-3 bg-gray-950/50 rounded text-xs text-gray-400 border border-gray-800 animate-fadeIn">
-                                    <p className="mb-2">1. 下载代理脚本 <code className="bg-gray-800 px-1 rounded text-gray-300">local-agent.js</code></p>
-                                    <p className="mb-2">2. 确保已安装 Node.js，在终端运行: <br/><code className="text-green-400 block mt-1">node local-agent.js</code></p>
-                                    <div className="flex items-center gap-2 mt-2">
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); downloadLocalAgent(); }}
-                                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded flex items-center gap-1.5 transition-colors"
-                                        >
-                                            <Download size={12} /> 下载脚本
-                                        </button>
-                                        <span className="text-gray-600 text-[10px]">或将其打包为 .exe 免环境运行</span>
+                                <div className="ml-11 mt-1 p-3 bg-gray-950/50 rounded text-xs text-gray-400 border border-gray-800 animate-fadeIn space-y-3">
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-bold text-gray-300">方式一：免安装 (推荐小白)</span>
+                                            <a 
+                                                href="/local-agent.exe" 
+                                                download="local-agent.exe"
+                                                className="bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded flex items-center gap-1.5 transition-colors no-underline text-xs font-bold"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <Package size={14} /> 下载 Windows 客户端 (.exe)
+                                            </a>
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 pl-2 border-l-2 border-gray-700">下载后直接双击运行即可，无需安装环境。</p>
+                                    </div>
+
+                                    <div className="border-t border-gray-800 pt-2 flex flex-col gap-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-bold text-gray-300">方式二：Node.js 脚本 (推荐开发)</span>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); downloadLocalAgent(); }}
+                                                className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded flex items-center gap-1.5 transition-colors text-xs"
+                                            >
+                                                <Download size={14} /> 下载 .js 脚本
+                                            </button>
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 pl-2 border-l-2 border-gray-700">需要安装 Node.js，运行命令: <code className="text-gray-300">node local-agent.js</code></p>
                                     </div>
                                 </div>
                             )}
