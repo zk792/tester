@@ -115,7 +115,7 @@ const App: React.FC = () => {
             </div>
             <div>
               <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
-                AutoAPI Tester
+                刘亚飞的自动化测试
               </h1>
               <p className="text-gray-400 text-sm">AI 驱动的自动化接口验证工具</p>
             </div>

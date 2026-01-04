@@ -1,7 +1,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { ApiConfig, KeyValuePair, AIProvider } from '../types';
-import { Settings, FileText, Key, Upload, Trash2, FileType, Plus, X, ToggleLeft, ToggleRight, List, Sliders, Bot, RefreshCw, Zap, Download, Monitor, Cloud, Laptop, Globe, ExternalLink, Play, Package } from 'lucide-react';
+import { Settings, FileText, Key, Upload, Trash2, FileType, Plus, X, ToggleLeft, ToggleRight, List, Sliders, Bot, RefreshCw, Zap, Download, Monitor, Cloud, Laptop, Globe, ExternalLink, Play, Package, Wifi, WifiOff } from 'lucide-react';
 
 // Declare mammoth globally as it's loaded via script tag
 declare const mammoth: any;
@@ -19,6 +19,8 @@ const SetupPanel: React.FC<SetupPanelProps> = ({ config, setConfig, onGenerate, 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<'ai' | 'basic' | 'advanced' | 'docs'>('ai');
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>('direct');
+  const [agentStatus, setAgentStatus] = useState<'unknown' | 'connected' | 'error'>('unknown');
+  const [agentCheckLoading, setAgentCheckLoading] = useState(false);
 
   // Initialize connection mode state from config
   useEffect(() => {
@@ -34,6 +36,7 @@ const SetupPanel: React.FC<SetupPanelProps> = ({ config, setConfig, onGenerate, 
   // Update config when mode changes
   const handleModeChange = (mode: ConnectionMode) => {
       setConnectionMode(mode);
+      setAgentStatus('unknown');
       if (mode === 'direct') {
           setConfig(prev => ({ ...prev, useServerProxy: false }));
       } else if (mode === 'local') {
@@ -101,47 +104,82 @@ const SetupPanel: React.FC<SetupPanelProps> = ({ config, setConfig, onGenerate, 
   };
 
   // Local Agent Script Content
+  // UPDATED: Added /health endpoint and strict CORS options
   const localAgentScript = `
 const express = require('express');
 const cors = require('cors');
-const axios = require('axios');
 const bodyParser = require('body-parser');
 
+// 如果 pkg 打包出现 axios 警告，请确保使用 Node 18+ 原生 fetch
+// 此脚本不依赖 axios
 const app = express();
 const PORT = 3001;
 
-// 允许所有跨域请求
-app.use(cors());
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cors({
+    origin: '*', // 允许所有来源
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+
+// 健康检查接口
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', version: '1.0.1' });
+});
 
 app.post('/proxy', async (req, res) => {
     const { targetUrl, method, headers, body } = req.body;
     console.log(\`[Proxy] \${method} -> \${targetUrl}\`);
 
     try {
-        const response = await axios({
-            url: targetUrl, method, headers, data: body,
-            validateStatus: () => true 
+        const fetchOptions = {
+            method: method,
+            headers: headers || {},
+        };
+
+        if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && body) {
+            fetchOptions.body = typeof body === 'object' ? JSON.stringify(body) : body;
+        }
+
+        const response = await fetch(targetUrl, fetchOptions);
+        
+        // 读取响应体
+        const contentType = response.headers.get('content-type');
+        let responseData;
+        if (contentType && contentType.includes('application/json')) {
+            responseData = await response.json();
+        } else {
+            responseData = await response.text();
+        }
+
+        // 转换 Headers 为对象
+        const responseHeaders = {};
+        response.headers.forEach((value, key) => {
+            responseHeaders[key] = value;
         });
+
         res.json({
             status: response.status,
             statusText: response.statusText,
-            headers: response.headers,
-            data: response.data
+            headers: responseHeaders,
+            data: responseData
         });
     } catch (error) {
         console.error('[Error]', error.message);
         res.status(502).json({
-            status: 0, error: error.message,
-            data: error.response?.data || null
+            status: 0, 
+            error: error.message,
+            hint: "Check server console for details."
         });
     }
 });
 
 app.listen(PORT, () => {
-    console.log(\`✅ 本地代理已启动: http://localhost:\${PORT}/proxy\`);
-    console.log(\`   请在网页端将代理地址设置为上方 URL\`);
+    console.log(\`✅ 本地代理已启动: http://localhost:\${PORT}\`);
+    console.log(\`✅ 健康检查接口: http://localhost:\${PORT}/health\`);
+    console.log(\`------------------------------------------------\`);
 });
 `.trim();
 
@@ -155,6 +193,33 @@ app.listen(PORT, () => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+  };
+
+  const checkLocalAgentConnection = async () => {
+      setAgentCheckLoading(true);
+      setAgentStatus('unknown');
+      try {
+          // Attempt to fetch health endpoint
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 3000);
+          
+          const res = await fetch('http://localhost:3001/health', { 
+              signal: controller.signal,
+              mode: 'cors'
+          });
+          clearTimeout(timeoutId);
+
+          if (res.ok) {
+              setAgentStatus('connected');
+          } else {
+              setAgentStatus('error');
+          }
+      } catch (e) {
+          console.error("Agent Check Failed", e);
+          setAgentStatus('error');
+      } finally {
+          setAgentCheckLoading(false);
+      }
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -541,6 +606,49 @@ app.listen(PORT, () => {
                                             </button>
                                         </div>
                                         <p className="text-[10px] text-gray-500 pl-2 border-l-2 border-gray-700">需要安装 Node.js，运行命令: <code className="text-gray-300">node local-agent.js</code></p>
+                                    </div>
+
+                                    {/* Connection Checker */}
+                                    <div className="border-t border-gray-800 pt-2">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="font-bold text-gray-300">连接测试:</span>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); checkLocalAgentConnection(); }}
+                                                disabled={agentCheckLoading}
+                                                className="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-[10px] flex items-center gap-1"
+                                            >
+                                                {agentCheckLoading ? <RefreshCw className="animate-spin" size={10} /> : <Zap size={10} />}
+                                                测试连接
+                                            </button>
+                                        </div>
+                                        {agentStatus === 'connected' && (
+                                            <div className="text-green-400 flex items-center gap-1">
+                                                <Wifi size={12} /> 连接成功！可以进行测试。
+                                            </div>
+                                        )}
+                                        {agentStatus === 'error' && (
+                                            <div className="text-red-400 space-y-1">
+                                                <div className="flex items-center gap-1 font-bold">
+                                                    <WifiOff size={12} /> 连接失败
+                                                </div>
+                                                {window.location.protocol === 'https:' && (
+                                                    <div className="bg-red-900/20 p-2 rounded border border-red-900/50">
+                                                        <p className="font-bold text-amber-500 mb-1">⚠️ 混合内容错误 (Mixed Content)</p>
+                                                        <p>当前网站通过 <b>HTTPS</b> 访问，无法直接连接本地的 <b>HTTP</b> 代理。</p>
+                                                        <p className="mt-1 font-bold text-gray-300">解决方案：</p>
+                                                        <ol className="list-decimal pl-4 mt-1 space-y-1">
+                                                            <li>在 Chrome 地址栏输入: <code className="bg-gray-800 px-1 rounded select-all">chrome://flags/#block-insecure-private-network-requests</code></li>
+                                                            <li>将该选项设置为 <b>Disabled</b></li>
+                                                            <li>重启浏览器</li>
+                                                        </ol>
+                                                        <p className="mt-2 text-[10px] text-gray-500">或者：将此网页部署在本地 (localhost) 运行。</p>
+                                                    </div>
+                                                )}
+                                                {window.location.protocol !== 'https:' && (
+                                                    <p>请确认 local-agent.exe 是否正在运行，且监听端口为 3001。</p>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}

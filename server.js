@@ -9,14 +9,23 @@ const app = express();
 const PORT = 3001;
 
 // 允许跨域
-app.use(cors());
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // 增加 JSON Body 大小限制，防止大包报错
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
 // 托管静态文件 (可选，如果想让这个 Node 服务同时托管前端)
 app.use(express.static(path.join(__dirname, 'dist')));
+
+// 健康检查接口 (用于前端测试连接)
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', version: 'server-1.0.0' });
+});
 
 // === 核心代理接口 ===
 app.post('/proxy', async (req, res) => {
@@ -26,6 +35,7 @@ app.post('/proxy', async (req, res) => {
 
     try {
         // 在服务器端发起真实请求 (无 CORS 限制)
+        // 使用 Node 18+ 原生 fetch 或 axios (这里保留 axios 因为服务器环境通常可控)
         const response = await axios({
             url: targetUrl,
             method: method,
